@@ -1,0 +1,146 @@
+const puppeteer = require('puppeteer');
+const readline = require('readline');
+const fs = require('fs');
+// Or import puppeteer from 'puppeteer-core';
+
+const SESSION_FILE = './session.json';
+const DOMAIN = 'https://au.jora.com';
+
+const avoidList=["cook", "chef", "manager", "kitchen", "massage", "head", "driver", "factory", "worker", "nail", "beauty", "baker", "leader"];
+const containList=["retail", "sale", "wait", "reception", "front", "desk", "IT", "customer", "representative", "service", "pharma", "cafe"];
+
+//Disable loading of images, fonts, CSS
+async function blockAssets(page) {
+  await page.setRequestInterception(true);
+  page.on('request', (request) => {
+    const blockedTypes = ['image', 'font'];
+    if (blockedTypes.includes(request.resourceType())) {
+      request.abort();
+    } else {
+      request.continue();
+    }
+  });
+}
+
+// Launch the browser and open a new blank page
+async function start (puppeteer) {
+  const browser = await puppeteer.launch({
+      headless: true, // Must be false so you can manually solve CAPTCHA or 2FA
+    });
+  const page = await browser.newPage();
+  //blockAssets(page);
+
+  // Set screen size.
+  await page.setViewport({width: 1080, height: 1024});
+
+  var cookies;
+  // Try to load session if it exists
+  if (fs.existsSync(SESSION_FILE)) {
+    cookies = JSON.parse(fs.readFileSync(SESSION_FILE));
+    await page.setCookie(...cookies);
+    console.log('Session loaded from file.');
+  }
+  
+  // Navigate the page to a URL.
+  await page.goto('https://au.jora.com/j?sp=search&trigger_source=serp&r=25&a=24h&qa=y&st=date&q=&l=Oakleigh+VIC');
+
+  async function isSuitable(result, avoidList, containList) {
+    try{
+      const title = await result.$eval('h2.job-title.heading', el => el.innerText);
+      console.log(`Title: ${title}`);
+      for(unwanted of avoidList) {
+        if (title.toLowerCase().includes(unwanted.toLowerCase())) {
+          return false;
+        }
+      }
+      const status = await result.$eval('div.first-row div.content', el => el.innerText);
+      console.log(`Status: ${status}`);
+      if (status == 'Applied') {
+        return false;
+      }
+
+      //Choose keywords
+      for(keyword of containList) {
+        if (title.toLowerCase().includes(keyword.toLowerCase())) {
+          return true;
+        }
+      }
+    }
+    catch(error) {
+      console.error(error);
+    }
+    return false;
+  }
+
+  var nextPage = true;
+  var count =0;
+  while (nextPage) {
+
+    count += 1;
+    const results = await page.$$('div.job-card.result');
+    for (const result of results) {
+      if (!await isSuitable(result, avoidList, containList)) {
+        console.log("Skipped!!!!!!!!!!!!!!!!!!!!!");
+        continue;
+      }
+      await result.click();
+      const quickApply = await page.$('a.rounded-button.-primary.-w-full[data-action="click->hubble--job#track"');
+      const href = await page.evaluate(el => el.getAttribute('href'), quickApply);
+      //console.log(`Apply link: ${href}.`);
+
+      const npJob = await browser.newPage();
+      await npJob.setCookie(...cookies);
+      blockAssets(npJob);
+      await npJob.goto(DOMAIN+href);
+      const checkboxNotify = await npJob.$('input[name="notifyMeWithSimilarJob"]');
+      if (checkboxNotify) {
+        checkboxNotify.click();
+      }
+      const submitButton = await npJob.$('button[type="submit"]');
+      if(submitButton){
+        const statusReport = await npJob.evaluate(el => el.innerText, submitButton);
+        if(statusReport == 'Apply with profile'){
+          submitButton.click();
+          await npJob.waitForNavigation({ waitUntil: 'networkidle0' });
+        }
+      }
+      
+      await npJob.evaluate(() => new Promise(resolve => setTimeout(resolve, 100)));
+      console.log('Form submitted successfully!');
+      await npJob.close();
+    }
+    const nextButton = await page.$('a.next-page-button[rel="nofollow"]');
+    if (nextButton) {
+      nextButton.click();
+      await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 600000 });
+      await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 100)));
+      console.log('Next page...');
+    }
+    else {
+      nextPage =false;
+      console.log(`End of search, went through: ${count} pages!`);
+    }
+  }
+
+  await new Promise((resolve) => {
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+      rl.question('Press Enter to exit...', () => {
+        rl.close();
+        resolve();
+      });
+    });
+
+  console.log('Complete!');
+
+
+//   // Save session (cookies)
+//   const cookies = await page.cookies();
+//   fs.writeFileSync(SESSION_FILE, JSON.stringify(cookies, null, 2));
+//   console.log('Session saved to file.');
+
+  await browser.close();
+}
+start(puppeteer);
