@@ -1,9 +1,8 @@
-import fetch from 'node-fetch';
-import 'dotenv/config';
+require('dotenv').config();
 
 
-export async function getTransitTime(origin, destination) {
-  const apiKey = 'YOUR_API_KEY';
+async function getTransitTime(origin, destination) {
+  const apiKey =  process.env.GOOGLE_MAP_API;
   const url = new URL('https://maps.googleapis.com/maps/api/distancematrix/json');
   url.searchParams.set('origins', origin);
   url.searchParams.set('destinations', destination);
@@ -24,3 +23,5 @@ export async function getTransitTime(origin, destination) {
     seconds: elem.duration.value
   };
 }
+
+module.exports = { getTransitTime };

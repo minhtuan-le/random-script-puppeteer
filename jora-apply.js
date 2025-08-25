@@ -1,7 +1,8 @@
 const puppeteer = require('puppeteer');
 const readline = require('readline');
 const fs = require('fs');
-// Or import puppeteer from 'puppeteer-core';
+const { getTransitTime } = require("./google-map-api");
+require('dotenv').config();
 
 const SESSION_FILE = './session.json';
 const DOMAIN = 'https://au.jora.com';
@@ -12,6 +13,7 @@ const containList=["retail", "sale", "wait", "reception", "front", "desk", "IT",
   "customer", "representative", "service", "pharma", "cafe", "bartender", "FOH", "sushi", 
   "team member", "assistant", "mechanic", "attendant", "tutor", "learn", "cashier", 
   "crew member", "packer"];
+  const homeAddress = process.env.HOME_ADDRESS
 
 //Disable loading of images, fonts, CSS
 async function blockAssets(page) {
@@ -46,7 +48,7 @@ async function start (puppeteer) {
   }
   
   // Navigate the page to a URL.
-  await page.goto('https://au.jora.com/j?a=48h&disallow=true&l=Oakleigh+VIC&pt=unseen&q=&qa=y&r=10&sp=facet_distance&st=date');
+  await page.goto('https://au.jora.com/j?a=48h&disallow=true&l=Oakleigh+VIC&pt=unseen&q=&qa=y&r=15&sp=facet_distance&st=date');
 
   async function isSuitable(result, avoidList, containList) {
     try{
@@ -62,6 +64,13 @@ async function start (puppeteer) {
       if (status == 'Applied') {
         return false;
       }
+
+      const workAddress = await result.$eval('a.job-location.clickable-link', el => el.innerText);
+      if(homeAddress && workAddress){
+        const commuteTime = await getTransitTime(homeAddress, workAddress);
+        if (commuteTime.seconds>2400) return false; //40 minutes
+      }
+      else return false;
 
       //Choose keywords
       for(keyword of containList) {
