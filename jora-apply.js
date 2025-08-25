@@ -6,8 +6,12 @@ const fs = require('fs');
 const SESSION_FILE = './session.json';
 const DOMAIN = 'https://au.jora.com';
 
-const avoidList=["cook", "chef", "manager", "kitchen", "massage", "head", "driver", "factory", "worker", "nail", "beauty", "baker", "leader"];
-const containList=["retail", "sale", "wait", "reception", "front", "desk", "IT", "customer", "representative", "service", "pharma", "cafe"];
+const avoidList=["cook", "chef", "manager", "kitchen", "massage", "delivery",
+  "head", "driver", "factory", "worker", "nail", "beauty", "baker", "leader"];
+const containList=["retail", "sale", "wait", "reception", "front", "desk", "IT", 
+  "customer", "representative", "service", "pharma", "cafe", "bartender", "FOH", "sushi", 
+  "team member", "assistant", "mechanic", "attendant", "tutor", "learn", "cashier", 
+  "crew member", "packer"];
 
 //Disable loading of images, fonts, CSS
 async function blockAssets(page) {
@@ -25,7 +29,7 @@ async function blockAssets(page) {
 // Launch the browser and open a new blank page
 async function start (puppeteer) {
   const browser = await puppeteer.launch({
-      headless: true, // Must be false so you can manually solve CAPTCHA or 2FA
+      headless: false, // Must be false so you can manually solve CAPTCHA or 2FA
     });
   const page = await browser.newPage();
   //blockAssets(page);
@@ -42,7 +46,7 @@ async function start (puppeteer) {
   }
   
   // Navigate the page to a URL.
-  await page.goto('https://au.jora.com/j?sp=search&trigger_source=serp&r=25&a=24h&qa=y&st=date&q=&l=Oakleigh+VIC');
+  await page.goto('https://au.jora.com/j?a=48h&disallow=true&l=Oakleigh+VIC&pt=unseen&q=&qa=y&r=10&sp=facet_distance&st=date');
 
   async function isSuitable(result, avoidList, containList) {
     try{
@@ -84,7 +88,7 @@ async function start (puppeteer) {
         continue;
       }
       await result.click();
-      const quickApply = await page.$('a.rounded-button.-primary.-w-full[data-action="click->hubble--job#track"');
+      const quickApply = await page.$('a.rounded-button.-primary.-w-full[data-js-quick-apply="true"]');
       const href = await page.evaluate(el => el.getAttribute('href'), quickApply);
       //console.log(`Apply link: ${href}.`);
 
