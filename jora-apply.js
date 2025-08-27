@@ -12,7 +12,7 @@ const avoidList=["cook", "chef", "manager", "kitchen", "massage", "delivery",
 const containList=["retail", "sale", "wait", "reception", "front", "desk", "IT", 
   "customer", "representative", "service", "pharma", "cafe", "bartender", "FOH", "sushi", 
   "team member", "assistant", "mechanic", "attendant", "tutor", "learn", "cashier", 
-  "crew member", "packer"];
+  "crew member", "packer", "Business"];
   const homeAddress = process.env.HOME_ADDRESS
 
 //Disable loading of images, fonts, CSS
@@ -64,36 +64,39 @@ async function start (puppeteer) {
       if (status == 'Applied') {
         return false;
       }
+      //Choose keywords
+      for(keyword of containList) {
+        if (!title.toLowerCase().includes(keyword.toLowerCase())) {
+          return false;
+        }
+      }
 
       const workAddress = await result.$eval('a.job-location.clickable-link', el => el.innerText);
       if(homeAddress && workAddress){
         const commuteTime = await getTransitTime(homeAddress, workAddress);
-        if (commuteTime.seconds>2400) return false; //40 minutes
+
+        console.log('Commute Time:', commuteTime.text);
+        if (commuteTime.seconds >2400) return false; //40 minutes
       }
       else return false;
 
-      //Choose keywords
-      for(keyword of containList) {
-        if (title.toLowerCase().includes(keyword.toLowerCase())) {
-          return true;
-        }
-      }
+      
     }
     catch(error) {
       console.error(error);
     }
-    return false;
+    return true;
   }
 
   var nextPage = true;
-  var count =0;
+  var count =0, jobApplied = 0;
   while (nextPage) {
 
     count += 1;
     const results = await page.$$('div.job-card.result');
     for (const result of results) {
       if (!await isSuitable(result, avoidList, containList)) {
-        console.log("Skipped!!!!!!!!!!!!!!!!!!!!!");
+        console.log("Skipped!\n");
         continue;
       }
       await result.click();
@@ -113,13 +116,14 @@ async function start (puppeteer) {
       if(submitButton){
         const statusReport = await npJob.evaluate(el => el.innerText, submitButton);
         if(statusReport == 'Apply with profile'){
+          jobApplied+=1;
           submitButton.click();
+          console.log('Form submitted!!!!!!!!!!!!!!!\n');
           await npJob.waitForNavigation({ waitUntil: 'networkidle0' });
         }
       }
       
       await npJob.evaluate(() => new Promise(resolve => setTimeout(resolve, 100)));
-      console.log('Form submitted successfully!');
       await npJob.close();
     }
     const nextButton = await page.$('a.next-page-button[rel="nofollow"]');
@@ -131,7 +135,7 @@ async function start (puppeteer) {
     }
     else {
       nextPage =false;
-      console.log(`End of search, went through: ${count} pages!`);
+      console.log(`End of search, went through: ${count} pages. Applied: ${jobApplied} jobs`);
     }
   }
 
