@@ -137,3 +137,6 @@ dist
 
 #session file
 session.json
+
+#content file
+content.txt

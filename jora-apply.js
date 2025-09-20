@@ -12,7 +12,7 @@ const avoidList=["cook", "chef", "manager", "kitchen", "massage", "delivery",
 const containList=["retail", "sale", "wait", "reception", "front", "desk", "IT", 
   "customer", "representative", "service", "pharma", "cafe", "bartender", "FOH", "sushi", 
   "team member", "assistant", "mechanic", "attendant", "tutor", "learn", "cashier", 
-  "crew member", "packer", "Business"];
+  "crew member", "packer", "Business", "staff", "coordinator", "teacher", "educator"];
   const homeAddress = process.env.HOME_ADDRESS
 
 //Disable loading of images, fonts, CSS
@@ -39,7 +39,7 @@ async function start (puppeteer) {
   // Set screen size.
   await page.setViewport({width: 1080, height: 1024});
 
-  var cookies;
+  let cookies;
   // Try to load session if it exists
   if (fs.existsSync(SESSION_FILE)) {
     cookies = JSON.parse(fs.readFileSync(SESSION_FILE));
@@ -48,7 +48,7 @@ async function start (puppeteer) {
   }
   
   // Navigate the page to a URL.
-  await page.goto('https://au.jora.com/j?a=48h&disallow=true&l=Oakleigh+VIC&pt=unseen&q=&qa=y&r=15&sp=facet_distance&st=date');
+  await page.goto('https://au.jora.com/j?a=48h&disallow=true&l=Oakleigh+VIC&q=&qa=y&r=10&sp=facet_distance&st=date');
 
   async function isSuitable(result, avoidList, containList) {
     try{
@@ -56,47 +56,75 @@ async function start (puppeteer) {
       console.log(`Title: ${title}`);
       for(unwanted of avoidList) {
         if (title.toLowerCase().includes(unwanted.toLowerCase())) {
-          return false;
+          return {
+            suitability:false,
+            reason: "In avoid list"
+          };
         }
       }
       const status = await result.$eval('div.first-row div.content', el => el.innerText);
-      console.log(`Status: ${status}`);
+      //console.log(`Status: ${status}`);
       if (status == 'Applied') {
-        return false;
+        return {
+            suitability:false,
+            reason: "Already applied"
+          };
       }
       //Choose keywords
+      hasKeyword = false;
       for(keyword of containList) {
-        if (!title.toLowerCase().includes(keyword.toLowerCase())) {
-          return false;
+        if (title.toLowerCase().includes(keyword.toLowerCase())) {
+          hasKeyword= true;
+          continue;
         }
       }
+      if (!hasKeyword){
+        return {
+          suitability:false,
+          reason: "Does not contain required key words"
+        };
+      }      
 
-      const workAddress = await result.$eval('a.job-location.clickable-link', el => el.innerText);
+      workAddress = await result.$eval('a.job-location.clickable-link', el => el.innerText);
+      const workCompany = await result.$eval('span.job-company', el => el.innerText);
       if(homeAddress && workAddress){
+        if (workCompany){
+          workAddress = workCompany + ', ' + workAddress
+        }
         const commuteTime = await getTransitTime(homeAddress, workAddress);
 
-        console.log('Commute Time:', commuteTime.text);
-        if (commuteTime.seconds >2400) return false; //40 minutes
+        //console.log('Commute Time:', commuteTime.text);
+        if (commuteTime.seconds >2400) //40 minutes
+          return {
+            suitability:false,
+            reason: `Too far away, distance: ${commuteTime.text}`
+          }; 
       }
-      else return false;
+      else return {
+        suitability:false,
+        reason: "Cannot find address"
+      };
 
       
     }
     catch(error) {
       console.error(error);
     }
-    return true;
+    return {
+      suitability:true
+    };
   }
 
-  var nextPage = true;
-  var count =0, jobApplied = 0;
+  nextPage = true;
+  count =0, jobApplied = 0;
   while (nextPage) {
 
     count += 1;
     const results = await page.$$('div.job-card.result');
     for (const result of results) {
-      if (!await isSuitable(result, avoidList, containList)) {
-        console.log("Skipped!\n");
+      const checkSuitability = await isSuitable(result, avoidList, containList)
+      if (!checkSuitability.suitability) {
+        console.log(`Skipped --- ${checkSuitability.reason}\n`);
         continue;
       }
       await result.click();
@@ -151,12 +179,6 @@ async function start (puppeteer) {
     });
 
   console.log('Complete!');
-
-
-//   // Save session (cookies)
-//   const cookies = await page.cookies();
-//   fs.writeFileSync(SESSION_FILE, JSON.stringify(cookies, null, 2));
-//   console.log('Session saved to file.');
 
   await browser.close();
 }
